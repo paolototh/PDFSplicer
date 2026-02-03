@@ -1,0 +1,23 @@
+# Dependency folders (najveći krivac za onih 45MB)
+node_modules/
+
+# Build folder (gdje TypeScript sprema kompajlirani JavaScript)
+dist/
+out/
+build/
+
+# SQLite baza (ne želiš slati svoje testne podatke na Git)
+*.db
+*.db-journal
+
+# Log datoteke
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS specifične datoteke
+.DS_Store
+Thumbs.db
+
+# Environment varijable (ako ih budeš koristio za lozinke)
+.env
