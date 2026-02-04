@@ -1,0 +1,127 @@
+Nova znanja:
+1. Node i Electron se mijesaju u kodu. Node trebam koristiti kada radim operacije koje direktno Electron nece pozivati.
+Electron koristim kada UI treba komunicirati sa OS-om
+- Node Cita datoteke, kriptira lozinke, stvara direktorije itd.
+- Elektron trazi direktorij, stavlja ikonu u tray, pokazuje pop-up prozore itd.
+
+Kod auto update-a electron provjeri verziju OS-a, node skine update.
+Kad se poziva file explorer, electron otvara prozor, node pokazuje sto je unutra.
+Kada imam pop-up electron ga pozove, node zna kada ga treba poslati.
+
+this.baseDir = app.getPath('userData'); "Hey Electron, ask Windows/Mac where I'm allowed to save data."
+this.sourcesDir = path.join(this.baseDir, 'sources'); "Hey Node, take that text and make a valid file path out of it."
+
+2. app.getPath je electronova metoda koja vrati appData direktorij, ne moram provjeravati za svaki OS
+
+3. i 4. su kljuc za brzinu izvodenja koda, omogucuju da nema smrzavanja aplikacije.
+
+3. await i async koji sam shvatio kao multithreading. Oni omogucavaju da funkcija da flag koji kaze proces je gotov,
+informacija je dostupna kada je procesor slobodan da ju obradi.
+Isto imam sync operacije koje kaze ai ne koristim jer su vise vezane za GUI.
+
+4. Promise je obecanje da cu vratiti vrijednost koju jos uvijek nemam, promise se rijesi kada procesor ima resursa da 
+obradi zahtjev i da se sve ne smrzne.
+
+BACK END
+
+DEPENDENCIES:
+better-sqlite3
+electron
+uuid
+
+1. StorageService
+
+    + FR-APP-001: Application data stored in OS-specific location (%APPDATA%, ~/Library/Application Support, etc.).
+	koristim app.getPath (app se odnosi na electron) sto je funkcija koja vraca taj appData direktorij bez obzira na OS
+	
+    + FR-APP-002: Maintain folder structure (sources/, outputs/, thumbnails/, app.db),
+	+ FR-APP-003: Create folder structure on first launch.
+	Ovo dvoje je vezano. Inicijaliziram varijable koje drze string za svaki direktorij, prebacim ih u array te sa mkdir
+	stvorim datoteke (file system fs mi omoguci stvaranje direktorija, samo dam putanju)
+    
+	+ FR-IMP-005: Copy imported PDFs to sources/ folder with unique identifiers (UUID). Ovdje nikako ne radim insert!
+	Za ovu funkcija importam UUID v4, on mi radi random unique ID uuid.
+	napravim targetPath koji je sourcesDir, ${uuid}.pdf
+	Parametar je izvorni path koji cu koristiti za fs.copyFile(izvor, target)
+	vratim targetPath i uuid!
+
+    + FR-GEN-005: Save outputs to outputs/ folder.
+	Uzmem si file path (kojeg mogu uvijek dohvatiti iz baze), napravim string outputFileName koji pridruzim varijabli
+	te ga vratim.
+	Nemoj dodati .pdf na kraj outputFileName jer je vec to .pdf u sources-u.
+
+    + FR-HIST-003: Reveal generated file in system file explorer.
+	Nema potrebe za async jer je shell synchronous
+	
+    + FR-HIST-007: Delete outputs with confirmation (moves to system trash).
+	ovdje koristim electron jer on ima specificnu fukciju trashItem koja je brise datoteku trajno, vec ju sutne u smece.
+	
+    + FR-HIST-011: Show disk space usage summary.
+	Ne mogu koristiti fs.size jer pokaze 0 za direktorij
+	Napravim si varijablu koja sprema ukupnu velicinu.
+	Mogu napraviti funkciju koja rekurzivno zbraja fajlove. Moram pronaci sve datoteke direktorija kroz koje tada prolazim. Moram zapamtiti file path kako bi mogao pristupiti svakoj datoteci.
+	Ako je direktorij, pozivam funkciju rekuzivno, += return value
+	Ako je datoteka += velicina.
+	
+
+    FR-ERR-006: Detect and handle missing source files.
+
+2. DatabaseService
+
+    FR-PROJ-001 to FR-PROJ-009: Full CRUD for projects (Create, List, Open, Rename, Delete, Duplicate).
+
+    FR-IMP-006: Preserve original filename in metadata.
+
+    FR-HIST-001: Manage File Library (Imported sources and Generated outputs data).
+    FR-HIST-008: Delete sources only if not referenced by active projects (Referential integrity).
+    FR-HIST-012: Search existing projects by name.
+
+3. PDFService
+
+Handles low-level PDF manipulation and validation. Should be executed in Worker Threads.
+
+    FR-IMP-002: Validate files by content signature (not extension only).
+    FR-IMP-010: Password-Protected PDF Handling (Detection, validation, and processing).
+    
+	FR-GEN-001: Generate PDF matching timeline sequence locally.
+    FR-GEN-002: Support pages from multiple source files in single output.
+    FR-GEN-003: Include blank pages at specified positions.
+    FR-GEN-007: Maintain original page quality (no lossy compression).
+
+4. ThumbnailService
+
+    FR-IMP-007: Extract page count and generate thumbnail for each page.
+    FR-IMP-011: Store thumbnails in thumbnails/ folder with cache invalidation.
+
+    NFR-PERF-001: Ensure thumbnail generation <5s per file (up to 100 pages).
+
+5. ImportService
+
+    FR-IMP-001: Handle import via native file picker or drag-and-drop.
+    FR-IMP-003: Enforce max file size: 200MB per file.
+    FR-IMP-008: Track and display import progress: importing, processing, ready, failed.
+    FR-IMP-012: Handle duplicate imports (checksum comparison, prompt user).
+	
+    FR-ERR-003: Retry mechanism for failed file operations (3 attempts).
+
+6. ExportService
+
+    FR-GEN-004: Generate default filename: {projectName}_{timestamp}.pdf.
+    FR-GEN-006 / FR-GEN-011: Display and update generation progress bar and status.
+    FR-GEN-008: Link output to source project in database.
+    FR-GEN-009: Ensure multiple generations create separate output files.
+    FR-GEN-010: Option to open generated PDF in default viewer after completion.
+    FR-GEN-012: Handle generation failures gracefully (preserve project state).
+
+7. ProjectService (Business Logic)
+
+    FR-PROJ-007: Logic for copying/duplicating projects to create independent states.
+    FR-PROJ-008: Logic for checking unsaved changes on window close.
+
+    FR-EDIT-008: Undo/redo functionality for timeline operations.
+
+    NFR-REL-001: Automatic recovery from crashes (restore last project state).
+    NFR-REL-002: Atomic project saves (no partial state).
+	
+Big biznis za kasniju implementaciju
+FR-APP-006: Native OS dialogs for file operations. (GUI)
