@@ -14,16 +14,19 @@ export class StorageService {
 
     //initialize the storage path and create the folder structure
     //i am initializing the variables so i can create getters for them later
-    constructor(){}
+    constructor(){
+        this.baseDirectory = app.getPath("userData");
+        this.sourcesDirectory = path.join(this.baseDirectory, "sources");
+        this.outputsDirectory = path.join(this.baseDirectory, "outputs");
+        this.thumbnailsDirectory = path.join(this.baseDirectory, "thumbnails");
+
+        this.initializeStorage();
+    }
 
     // create the folder structure inside the storage
     // i have the paths, now i must use mkdir to create them
     async initializeStorage(): Promise<void> { //FR-APP-003: Create folder structure on first launch
         //app.getPath returns the path to the appdata folder for the given OS    
-        this.baseDirectory = app.getPath("userData");
-        this.sourcesDirectory = path.join(this.baseDirectory, "sources");
-        this.outputsDirectory = path.join(this.baseDirectory, "outputs");
-        this.thumbnailsDirectory = path.join(this.baseDirectory, "thumbnails");
         
         const directories = [this.sourcesDirectory, this.outputsDirectory, this.thumbnailsDirectory];
 

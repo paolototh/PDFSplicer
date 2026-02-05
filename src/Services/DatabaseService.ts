@@ -13,7 +13,7 @@ import { v4 as uuidv4 } from "uuid";
 export class DatabaseService {
     
     //PLACEHOLDER
-    private database: Database;
+    private database: Database.Database;
     
     //PLACEHOLDER
     constructor(StorageService: StorageService) {
