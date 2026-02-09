@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>PDF Renderer</title>
+</head>
+<body style="background: #1a1a1a; color: white; font-family: sans-serif; padding: 20px;">
+    <h1>PDF Splicer Status: <span id="status" style="color: #00ff00;">Spreman</span></h1>
+    <hr>
+    <div id="logs" style="font-family: monospace; font-size: 13px; color: #888;"></div>
+
+    <script type="module">
+        // Uvoz PDF.js direktno u Renderer
+        import * as pdfjs from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs';
+        pdfjs.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
+
+        const status = document.getElementById('status');
+        const logs = document.getElementById('logs');
+        const log = (m) => logs.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${m}</div>`;
+
+        window.electronAPI.onGenerateThumbnail(async ({ filePath, fileId }) => {
+            status.innerText = "Renderiram...";
+            log(`Generiram thumbnail za: ${fileId}`);
+
+            try {
+                const pdf = await pdfjs.getDocument(filePath).promise;
+                const page = await pdf.getPage(1);
+                
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                const viewport = page.getViewport({ scale: 0.5 });
+                
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+
+                await page.render({ canvasContext: context, viewport }).promise;
+
+                const imageData = canvas.toDataURL('image/jpeg', 0.8);
+                await window.electronAPI.saveThumbnailToDisk({ fileId, imageData });
+                
+                status.innerText = "Spreman";
+                log(`✅ Thumbnail ${fileId} uspješno spremljen.`);
+            } catch (err) {
+                log(`❌ Greška: ${err.message}`);
+                status.innerText = "Greška";
+            }
+        });
+    </script>
+</body>
+</html>

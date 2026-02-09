@@ -1,26 +1,36 @@
 {
   "name": "pdfreorganizer",
   "version": "1.0.0",
+  "description": "",
   "main": "dist/index.js",
-  "type": "module",
   "scripts": {
-    "build": "tsc",
-    "start": "npm run build && electron ."
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "tsc && electron .",
+    "build": "tsc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/paolototh/PDFSplicer.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/paolototh/PDFSplicer/issues"
+  },
+  "homepage": "https://github.com/paolototh/PDFSplicer#readme",
   "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^25.2.0",
-    "@types/uuid": "^10.0.0",
-    "electron": "^40.1.0",
+    "@types/node": "^25.2.2",
+    "electron": "^40.2.1",
     "typescript": "^5.9.3"
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^5.4.624",
     "uuid": "^13.0.0",
     "zod": "^4.3.6"
   }

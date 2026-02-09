@@ -1,112 +1,183 @@
-import * as electron from 'electron';
-const { app, shell } = electron;
+// Services/StorageService.ts
+import { app, shell } from 'electron';
 import path from 'path';
-import { join } from 'path';
 import fs from 'fs/promises';
-import { readdir, stat } from 'fs/promises';
-import { v4 as uuidv4 } from 'uuid';
+import { createHash } from 'crypto';
+import { createReadStream, existsSync } from 'fs';
 
+/**
+ * StorageService upravlja svim interakcijama s diskom (FileSystem).
+ * Odgovoran je za inicijalizaciju mapa, kopiranje PDF-ova, 
+ * izračun checksuma i spremanje generiranih thumbnailova.
+ */
 export class StorageService {
     private baseDirectory: string;
     private sourcesDirectory: string;
     private outputsDirectory: string;
     private thumbnailsDirectory: string;
 
-    //initialize the storage path and create the folder structure
-    //i am initializing the variables so i can create getters for them later
-    constructor(){
+    constructor() {
+        // app.getPath("userData") vraća putanju do AppData/Roaming/ime-aplikacije
         this.baseDirectory = app.getPath("userData");
         this.sourcesDirectory = path.join(this.baseDirectory, "sources");
         this.outputsDirectory = path.join(this.baseDirectory, "outputs");
         this.thumbnailsDirectory = path.join(this.baseDirectory, "thumbnails");
-
-        this.initializeStorage();
     }
 
-    // create the folder structure inside the storage
-    // i have the paths, now i must use mkdir to create them
-    async initializeStorage(): Promise<void> { //FR-APP-003: Create folder structure on first launch
-        //app.getPath returns the path to the appdata folder for the given OS    
-        
-        const directories = [this.sourcesDirectory, this.outputsDirectory, this.thumbnailsDirectory];
+    /**
+     * FR-APP-003: Kreira strukturu mapa prilikom prvog pokretanja.
+     */
+    async initializeStorage(): Promise<void> {
+        const directories = [
+            this.sourcesDirectory, 
+            this.outputsDirectory, 
+            this.thumbnailsDirectory
+        ];
 
         for (const dir of directories) {
             try {
-                //who is allowing me to make a directory? The fs module!
-                //recursive allows me to create nested directories if they don't exist
-                await fs.mkdir(dir, { recursive: true });
-                //also no risk error if the directory already exists
+                if (!existsSync(dir)) {
+                    await fs.mkdir(dir, { recursive: true });
+                }
             } catch (error) {
-                throw new Error(`Failed to create directory ${dir}: ${error}`);
+                throw new Error(`Kritična greška pri kreiranju direktorija ${dir}: ${error}`);
             }
         }
     }
 
-    //FR-IMP-005 Copy imported PDFs to sources/ folder with unique identifiers
-    async importNewFile(originalFilePath: string): Promise<{targetPath: string, fileId: string}> {
+    /**
+     * Vraća veličinu datoteke u bajtovima.
+     */
+    async getFileSize(filePath: string): Promise<number> {
         try {
-            const fileId = uuidv4();
+            const fileStats = await fs.stat(filePath);
+            return fileStats.size;
+        } catch (error) {
+            console.error(`Greška pri dohvaćanju veličine datoteke: ${filePath}`, error);
+            return 0;
+        }
+    }
+
+    /**
+     * FR-HIST-011: Rekurzivno izračunava zauzeće diska za određenu mapu.
+     */
+    async getFolderDiskSpaceUsage(directory: string): Promise<number> {
+        try {
+            if (!existsSync(directory)) return 0;
+
+            const files = await fs.readdir(directory, { withFileTypes: true });
+            
+            const sizePromises = files.map(async (file) => {
+                const filePath = path.join(directory, file.name);
+
+                if (file.isDirectory()) {
+                    return this.getFolderDiskSpaceUsage(filePath);
+                } else {
+                    const stats = await fs.stat(filePath);
+                    return stats.size;
+                }
+            });
+
+            const fileSizes = await Promise.all(sizePromises);
+            return fileSizes.reduce((total, size) => total + size, 0);
+        } catch (error) {
+            console.error(`Greška pri izračunu zauzeća diska za ${directory}`, error);
+            return 0;
+        }
+    }
+
+    /**
+     * FR-IMP-005: Kopira uvezeni PDF u 'sources/' mapu s novim ID-em.
+     */
+    async importNewFile(originalFilePath: string, fileId: string): Promise<string> {
+        try {
             const targetPath = path.join(this.sourcesDirectory, `${fileId}.pdf`);
             await fs.copyFile(originalFilePath, targetPath);
-            return { targetPath, fileId };
+            return targetPath;
         } catch (error) {
-            throw new Error(`Failed to import file ${originalFilePath}: ${error}`);
+            throw new Error(`Greška pri kopiranju datoteke u sources: ${error}`);
         } 
     }
 
-    //FR-GEN-005 Save outputs to outputs/ folder
-    async saveGeneratedPDF(sourcesFilePath: string, outputsFileName: string): Promise<string> {
+    /**
+     * FR-GEN-005: Sprema generirani PDF u 'outputs/' mapu.
+     */
+    async saveGeneratedPDF(tempFilePath: string, outputsFileName: string): Promise<string> {
         try {
             const outputsFilePath = path.join(this.outputsDirectory, outputsFileName);
-            await fs.copyFile(sourcesFilePath, outputsFilePath);
+            await fs.copyFile(tempFilePath, outputsFilePath);
             return outputsFilePath;
         } catch (error) {
-            throw new Error(`Failed to save outputs file ${outputsFileName}: ${error}`);
+            throw new Error(`Greška pri spremanju izlaznog PDF-a: ${error}`);
         }
     }
 
-    //FR-HIST-003: Reveal generated file in system file explorer
-    //no need for async since shell.showItemInFolder is synchronous
-    revealInFileExplorer(filePath: string): void {
-        shell.showItemInFolder(filePath);
-    }
-
-    //FR-HIST-007: Delete outputs with confirmation (moves to system trash)
-    async deleteFile(filePath: string): Promise<void> {
-        try{
-            await shell.trashItem(filePath);
-        } catch (error) {
-            throw new Error(`Failed to delete file ${filePath}: ${error}`);
-        }
-    }
-
-    //FR-HIST-011: Show disk space usage summary
-    async getDiskSpaceUsage(directory: string): Promise<number> {
-        let totalBytes = 0;
-
-        const files = await readdir(directory, { withFileTypes: true });
-
-        for (const file of files) {
-            //Store the path to the file, this helps with recursion
-            const filePath = join(directory, file.name);
-            //Check if it's a directory or a file
-            if (file.isDirectory()) {
-                totalBytes += await this.getDiskSpaceUsage(filePath);
-            } else {
-                const fileStats = await stat(filePath);
-                totalBytes += fileStats.size;
+    /**
+     * Sprema Base64 sliku dobivenu iz Frontenda kao JPG datoteku na disk.
+     */
+    async saveThumbnailFromBase64(fileId: string, base64Data: string): Promise<string> {
+        try {
+            const outputDir = path.join(this.thumbnailsDirectory, fileId);
+            if (!existsSync(outputDir)) {
+                await fs.mkdir(outputDir, { recursive: true });
             }
 
+            // Uklanja Base64 header ako postoji (npr. data:image/jpeg;base64,)
+            const base64Image = base64Data.includes(';base64,') 
+                ? base64Data.split(';base64,').pop() 
+                : base64Data;
+
+            if (!base64Image) throw new Error("Neispravni Base64 podaci");
+
+            const filePath = path.join(outputDir, '0.jpg');
+            await fs.writeFile(filePath, base64Image, { encoding: 'base64' });
+            
+            return filePath;
+        } catch (error) {
+            throw new Error(`Greška pri spremanju thumbnaila: ${error}`);
         }
-        const mb = totalBytes / 1024 / 1024;
-        return Math.round(mb * 100) / 100;
     }
 
-    //GET methods for the directory paths
+    /**
+     * FR-HIST-003: Otvara mapu u system exploreru i fokusira datoteku.
+     */
+    revealInFileExplorer(filePath: string): void {
+        if (existsSync(filePath)) {
+            shell.showItemInFolder(filePath);
+        }
+    }
+
+    /**
+     * FR-HIST-007: Šalje datoteku u sistemski koš za smeće (Trash/Recycle Bin).
+     */
+    async deleteFile(filePath: string): Promise<void> {
+        try {
+            if (existsSync(filePath)) {
+                await shell.trashItem(filePath);
+            }
+        } catch (error) {
+            throw new Error(`Greška pri brisanju datoteke: ${error}`);
+        }
+    }
+
+    /**
+     * Izračunava SHA-256 Checksum datoteke (korištenje Stream-a za velike PDF-ove).
+     */
+    async calculateChecksum(filePath: string): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const hash = createHash("sha256");
+            const stream = createReadStream(filePath);
+
+            stream.on("data", (data) => hash.update(data));
+            stream.on("end", () => resolve(hash.digest("hex")));
+            stream.on("error", (err) => reject(err));
+        });
+    }
+
+    // --- GETTERI ZA PUTANJE ---
     get getStoragePath(): string { return this.baseDirectory; }
     get getSourcesPath(): string { return this.sourcesDirectory; }
-    get getoutputsPath(): string { return this.outputsDirectory; }
+    get getOutputsPath(): string { return this.outputsDirectory; }
     get getThumbnailsPath(): string { return this.thumbnailsDirectory; }
-    //Allows me to use the database path when initializing the database service
     get getDatabasePath(): string { return path.join(this.baseDirectory, "app.db"); }
 }
